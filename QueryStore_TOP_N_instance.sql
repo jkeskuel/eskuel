@@ -1,5 +1,3 @@
--- Source: https://matthewmcgiffen.com/2017/11/01/capture-the-most-expensive-queries-across-your-sql-server-using-query-store/
-
 --Gather and report on most resource hungry queries
 DECLARE @Reportinginterval int;
 DECLARE @Database sysname;
