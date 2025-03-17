@@ -34,7 +34,7 @@ INTO
 WHILE @@FETCH_STATUS = 0
 BEGIN
   SELECT
-    @SqlCommand = 'USE ' + @DatabaseName + ';' + '
+    @SqlCommand = 'USE [' + @DatabaseName + '];' + '
 INSERT INTO #TEMP_OVERVIEW
 SELECT '''+ @DatabaseName + N''', t.*
 FROM ( SELECT [UserType] = CASE princ.[type] 
