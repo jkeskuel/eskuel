@@ -1,0 +1,38 @@
+msinfo32                            - System Information GUI
+winver                              - Display Windows Version
+sysdm.cpl                           - System Properties
+dxdiag                              - DirectX Diagnostics (hardware info)
+ncpa.cpl                            - Network Connections GUI
+ipconfig /all                       - Display full IP configuration
+ping <address>                      - Check network connectivity
+nslookup <domain>                   - DNS lookup tool
+tracert <address>                   - Network route tracing
+netstat -anb                        - List active network connections
+gpresult /r                         - List applied Group Policies (basic)
+gpresult /h report.html             - Detailed Group Policies (HTML report)
+rsop.msc                            - Resultant Set of Policy GUI
+dsa.msc                             - Active Directory Users & Computers GUI
+gpmc.msc                            - Group Policy Management Console
+control update                      - Windows Update GUI
+UsoClient StartScan                 - Trigger Windows Update check (CLI)
+UsoClient StartInstall              - Install pending updates (CLI)
+diskmgmt.msc                        - Disk Management GUI
+cleanmgr                            - Disk Cleanup Utility
+chkdsk C: /f /r                     - Check and repair disk errors
+taskmgr                             - Task Manager
+eventvwr.msc                        - Event Viewer
+services.msc                        - Services Management Console
+taskschd.msc                        - Task Scheduler GUI
+compmgmt.msc                        - Computer Management Console
+resmon                              - Resource Monitor GUI
+perfmon.msc                         - Performance Monitor GUI
+perfmon /rel                        - Reliability Monitor GUI
+sfc /scannow                        - System File Checker (integrity check)
+wf.msc                              - Windows Firewall GUI
+secpol.msc                          - Local Security Policy GUI
+certmgr.msc                         - Certificate Manager GUI
+mstsc                               - Remote Desktop Connection
+SystemPropertiesRemote              - Remote Desktop Settings
+quickassist                         - Remote Assistance Tool
+systeminfo                          - Detailed OS information (CLI)
+sconfig                             - Server CLI manager, including updates

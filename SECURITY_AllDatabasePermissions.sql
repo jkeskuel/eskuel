@@ -1,7 +1,7 @@
-DECLARE @DatabaseName VARCHAR(50);
+DECLARE @DatabaseName SYSNAME;
 DECLARE @SqlCommand NVARCHAR(MAX);
-DECLARE @DatabaseUserName VARCHAR(50); -- ='user'
-DECLARE @LoginName VARCHAR(50); -- ='login'
+DECLARE @DatabaseUserName VARCHAR(100); -- ='user'
+DECLARE @LoginName VARCHAR(100); -- ='login'
 
 CREATE TABLE #TEMP_OVERVIEW
 (
@@ -138,7 +138,7 @@ WHERE rp.[type] = ''R''
 AND rp.[name] = ''public''
 AND obj.[is_ms_shipped] = 0
 ) t;'
- print @sqlcommand
+ --print @sqlcommand
   EXEC sp_executesql @SqlCommand;
 
   FETCH NEXT FROM db_cursor
@@ -149,9 +149,52 @@ END;
 CLOSE db_cursor;
 DEALLOCATE db_cursor;
 
-SELECT *
-FROM #TEMP_OVERVIEW
+
 --WHERE DatabaseUserName = @DatabaseUserName
 --AND LoginName = @LoginName;
+CREATE TABLE #GroupMembers (
+GroupName sysname,
+type varchar(100),
+privilege varchar(100),
+MemberName sysname,
+PermissionPath varchar(200)
+);
 
-DROP TABLE #TEMP_OVERVIEW;
+
+-- Insert members for each Windows group found in #TEMP_OVERVIEW
+DECLARE @group sysname;
+DECLARE group_cursor CURSOR FOR
+SELECT DISTINCT LoginName
+FROM #TEMP_OVERVIEW
+WHERE UserType = 'Windows Group';
+
+
+OPEN group_cursor;
+FETCH NEXT FROM group_cursor INTO @group;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+BEGIN TRY
+INSERT INTO #GroupMembers (GroupName, type, privilege, MemberName, PermissionPath)
+EXEC xp_logininfo @group, 'members';
+END TRY
+BEGIN CATCH
+PRINT CONCAT('Skipping group ', @group, ' due to error: ', ERROR_MESSAGE());
+END CATCH;
+
+
+
+FETCH NEXT FROM group_cursor INTO @group;
+END
+
+CLOSE group_cursor;
+DEALLOCATE group_cursor;
+
+-- Now join back to your temp overview
+SELECT o.*, g.MemberName
+FROM #TEMP_OVERVIEW o
+LEFT JOIN #GroupMembers g
+ON o.LoginName = g.PermissionPath;
+
+--DROP TABLE #TEMP_OVERVIEW;
+--DROP TABLE  #GroupMembers

@@ -1,0 +1,31 @@
+/*Check Query Store configuration for all databases*/
+
+CREATE TABLE #qs(
+  database_name sysname,
+  option_name   nvarchar(4000),
+  option_value  nvarchar(max)
+);
+
+DECLARE @db sysname, @sql nvarchar(max);
+DECLARE c CURSOR LOCAL FAST_FORWARD FOR
+  SELECT name FROM sys.databases
+  WHERE database_id > 4 AND state_desc = 'ONLINE';
+
+OPEN c; FETCH NEXT FROM c INTO @db;
+WHILE @@FETCH_STATUS = 0
+BEGIN
+  SET @sql = N'
+    USE ' + QUOTENAME(@db) + N';
+    SELECT DB_NAME(), [key], [value]
+    FROM OPENJSON(
+         (SELECT * FROM sys.database_query_store_options
+          FOR JSON PATH, WITHOUT_ARRAY_WRAPPER)
+    );';
+  INSERT #qs EXEC(@sql);
+  FETCH NEXT FROM c INTO @db;
+END
+CLOSE c; DEALLOCATE c;
+
+SELECT * FROM #qs 
+WHERE option_name = 'actual_state_desc'
+ORDER BY database_name, option_name

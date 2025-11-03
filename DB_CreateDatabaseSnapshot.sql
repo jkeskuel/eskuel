@@ -1,36 +1,49 @@
- DECLARE 
-@sourceDb sysname,
-@SQL nvarchar(max),
-@SSDBName sysname,
-@sourcePath nvarchar(512),
-@SnapshotName sysname;
-  
-SET @sourceDb = 'admindb'; -- IME BAZE
+DECLARE 
+    @sourceDb      SYSNAME = 'YOLO', /* Source database name */
+    @SQL           NVARCHAR(MAX),
+    @SSDBName      SYSNAME,
+    @sourcePath    NVARCHAR(512),
+    @SnapshotName  SYSNAME;
 
-SET @SnapshotName = @sourceDb +'_dbss_' + replace(convert(varchar(5),getdate(),108), ':', '') + '_' + convert(varchar, getdate(), 112)
+/* Generate snapshot name with timestamp */
+SET @SnapshotName = @sourceDb + '_dbss_' + 
+                    REPLACE(CONVERT(VARCHAR(5), GETDATE(), 108), ':', '') + '_' +
+                    CONVERT(VARCHAR, GETDATE(), 112);
 
-SELECT @sourcePath = LEFT(physical_name, LEN(physical_name)- CHARINDEX('\',REVERSE(physical_name))) 
-FROM sys.master_files 
-WHERE database_id = DB_ID(@sourceDb) 
-AND type_desc = 'ROWS'
-
-  IF OBJECT_ID('tempdb..##DBObjects' , 'U') IS NOT NULL
-   drop TABLE #DBObjects
-
-  SELECT TOP(0) DB= CONVERT(sysname,''), *
-  INTO #DBObjects
-  FROM sys.database_files
-
-  EXEC sp_Msforeachdb  'USE [?];INSERT INTO #DBObjects select ''[?]'', * from sys.database_files ';
-
-  SELECT @SQL='CREATE DATABASE ['+@SnapshotName+'_dbss] ON ';
-  SELECT @SQL+='(NAME='+NAME+',filename='''+ @sourcePath + '\' + NAME + '_ss''),'
-  FROM #DBObjects 
-  WHERE db='['+@sourceDb+']' 
+/* Get the path to the data file (excluding filename) */
+SELECT @sourcePath = LEFT(physical_name, LEN(physical_name) - CHARINDEX('\', REVERSE(physical_name)))
+FROM sys.master_files
+WHERE database_id = DB_ID(@sourceDb)
   AND type_desc = 'ROWS';
-  SELECT @SQL=substring(@SQL,1,len(@SQL)-1);
 
-  SELECT @SQL+= ' AS SNAPSHOT OF ['+@sourceDb +']; ';
+/* Drop temp table if it exists */
+IF OBJECT_ID('tempdb..##DBObjects', 'U') IS NOT NULL
+    DROP TABLE ##DBObjects;
 
-  --EXEC sys.sp_executesql @SQL;
-  PRINT @SQL
+/* Copy database file metadata to a global temp table */
+SET @SQL = '
+    SELECT *
+    INTO ##DBObjects
+    FROM [' + @sourceDb + '].sys.database_files;
+';
+EXEC sp_executesql @SQL;
+
+/* Build CREATE DATABASE AS SNAPSHOT OF command */
+SET @SQL = 'CREATE DATABASE [' + @SnapshotName + '_dbss] ON ';
+
+SELECT @SQL += 
+    '(NAME = ' + name + ', FILENAME = ''' + @sourcePath + '\' + name + '_ss''),'
+FROM ##DBObjects
+WHERE type_desc = 'ROWS';
+
+/* Remove the trailing comma */
+SET @SQL = LEFT(@SQL, LEN(@SQL) - 1);
+
+/* Append snapshot clause */
+SET @SQL += ' AS SNAPSHOT OF [' + @sourceDb + '];';
+
+/* Uncomment the next line to execute the snapshot creation */
+/* EXEC sp_executesql @SQL; */
+
+/* Print the final SQL command */
+PRINT @SQL;
