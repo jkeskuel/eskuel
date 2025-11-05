@@ -1,0 +1,30 @@
+SET NOCOUNT ON;
+
+DECLARE @pattern NVARCHAR(100) = N'SQLAX';
+DECLARE @sql NVARCHAR(MAX) = N'';
+
+SELECT @sql = @sql + '
+-- ====== Copy of ' + QUOTENAME(s.name) + '.' + QUOTENAME(o.name) + ' ======
+DECLARE @def NVARCHAR(MAX);
+SET @def = OBJECT_DEFINITION(' + CAST(o.object_id AS NVARCHAR(20)) + ');
+
+IF @def IS NOT NULL
+BEGIN
+    -- replace original name with new one
+    SET @def = REPLACE(@def, ' + QUOTENAME(o.name, '''') + ', ' + QUOTENAME(o.name + '_SQLAXOLD', '''') + ');
+    PRINT ''Creating copy of ' + QUOTENAME(o.name) + '...'';
+    EXEC(@def);
+END
+GO
+'
+FROM sys.objects AS o
+JOIN sys.sql_modules AS m ON o.object_id = m.object_id
+JOIN sys.schemas AS s ON o.schema_id = s.schema_id
+WHERE m.definition LIKE '%' + @pattern + '%'
+  AND o.type IN ('P','V','FN','IF','TF')   -- proc, view, scalar/table func
+  AND is_ms_shipped = 0;
+
+PRINT '-- =========================================';
+PRINT '-- Review generated script before running';
+PRINT '-- =========================================';
+PRINT @sql;
