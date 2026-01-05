@@ -19,7 +19,7 @@ SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
 DECLARE @TopN             int         = 100;          -- Top N rows returned
 DECLARE @LastNDays        int         = 7;            -- Lookback window
-DECLARE @OrderBy          varchar(20) = 'CPU';        -- 'CPU'|'DURATION'|'READS'
+DECLARE @OrderBy          varchar(20) = 'MEMORY';        -- 'CPU'|'DURATION'|'READS'|'MEMORY'
 DECLARE @MinExecutions    bigint      = 1;            -- Ignore hashes with < N executions
 
 -- Derived time window
@@ -47,6 +47,8 @@ CREATE TABLE #QueryStoreData
     total_logical_reads   bigint            NOT NULL,
     avg_logical_reads     decimal(18,2)     NOT NULL,
     total_physical_reads  bigint            NOT NULL,
+	avg_used_memory       decimal(18,2)     NOT NULL,
+    total_used_memory     bigint            NOT NULL,
     first_execution_time  datetime2(3)      NULL,
     last_execution_time   datetime2(3)      NULL
 );
@@ -129,6 +131,12 @@ BEGIN
 
         SUM(CAST(rs.avg_physical_io_reads * rs.count_executions AS bigint)) AS total_physical_reads,
 
+		SUM(CAST(rs.avg_query_max_used_memory * rs.count_executions AS bigint)) AS total_used_memory,
+        CASE WHEN SUM(rs.count_executions) > 0
+             THEN (SUM(CAST(rs.avg_query_max_used_memory * rs.count_executions AS bigint)) * 1.0)
+                  / NULLIF(SUM(rs.count_executions),0)
+             ELSE 0 END AS avg_used_memory,
+
         MIN(rsi.start_time) AS first_execution_time,
         MAX(rsi.end_time)   AS last_execution_time
     FROM sys.query_store_query q
@@ -201,6 +209,10 @@ DEALLOCATE cur;
              THEN CAST(SUM(total_logical_reads) AS decimal(18,2)) / NULLIF(SUM(total_executions),0)
              ELSE 0 END         AS avg_logical_reads,
         SUM(total_physical_reads) AS total_physical_reads,
+		SUM(total_used_memory) AS total_used_memory,
+         CASE WHEN SUM(total_executions) > 0
+             THEN CAST(SUM(total_used_memory) AS decimal(18,2)) / NULLIF(SUM(total_executions),0)
+             ELSE 0 END         AS avg_used_memory,
         MIN(first_execution_time) AS first_execution_time,
         MAX(last_execution_time)  AS last_execution_time
     FROM #QueryStoreData q
@@ -228,6 +240,10 @@ SELECT TOP (@TopN)
     CAST(avg_logical_reads AS DECIMAL(32,2)) avg_logical_reads,
     total_physical_reads,
 
+	-- Memory
+	total_used_memory,
+    CAST(avg_used_memory AS DECIMAL(32,2)) avg_used_memory,
+
     -- Window
     first_execution_time,
     last_execution_time,
@@ -246,6 +262,7 @@ ORDER BY
         WHEN @OrderBy = 'CPU'      THEN total_cpu_ms
         WHEN @OrderBy = 'DURATION' THEN total_duration_ms
         WHEN @OrderBy = 'READS'    THEN total_logical_reads
+		WHEN @OrderBy = 'MEMORY'    THEN total_used_memory
         ELSE total_cpu_ms
     END DESC;
 
@@ -274,7 +291,8 @@ SELECT
     SUM(query_id_count)            AS total_query_ids,
     SUM(total_executions)          AS total_executions,
     SUM(total_cpu_ms)              AS total_cpu_ms,
-    SUM(total_duration_ms)         AS total_duration_ms
+    SUM(total_duration_ms)         AS total_duration_ms,
+	SUM(total_used_memory)         AS total_used_memory
 FROM #QueryStoreData
 GROUP BY database_name
 ORDER BY total_cpu_ms DESC;
