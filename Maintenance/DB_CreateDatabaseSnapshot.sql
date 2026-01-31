@@ -1,49 +1,71 @@
+/*
+    Creates a database snapshot with proper handling of multiple data files
+    Works on both Windows and Linux paths
+*/
+
 DECLARE 
-    @sourceDb      SYSNAME = 'YOLO', /* Source database name */
-    @SQL           NVARCHAR(MAX),
-    @SSDBName      SYSNAME,
-    @sourcePath    NVARCHAR(512),
-    @SnapshotName  SYSNAME;
+    @SourceDB       SYSNAME = 'YOLO',  -- Source database name
+    @SnapshotSuffix NVARCHAR(50) = NULL, -- Optional suffix, defaults to timestamp
+    @SnapshotName   SYSNAME,
+    @SQL            NVARCHAR(MAX);
 
-/* Generate snapshot name with timestamp */
-SET @SnapshotName = @sourceDb + '_dbss_' + 
-                    REPLACE(CONVERT(VARCHAR(5), GETDATE(), 108), ':', '') + '_' +
-                    CONVERT(VARCHAR, GETDATE(), 112);
+-- Generate snapshot name
+IF @SnapshotSuffix IS NULL
+    SET @SnapshotSuffix = FORMAT(GETDATE(), 'yyyyMMdd_HHmmss');
 
-/* Get the path to the data file (excluding filename) */
-SELECT @sourcePath = LEFT(physical_name, LEN(physical_name) - CHARINDEX('\', REVERSE(physical_name)))
+SET @SnapshotName = @SourceDB + '_ss_' + @SnapshotSuffix;
+
+-- Check if source database exists
+IF DB_ID(@SourceDB) IS NULL
+BEGIN
+    RAISERROR('Database [%s] does not exist', 16, 1, @SourceDB);
+    RETURN;
+END;
+
+-- Check if snapshot already exists
+IF DB_ID(@SnapshotName) IS NOT NULL
+BEGIN
+    RAISERROR('Snapshot [%s] already exists', 16, 1, @SnapshotName);
+    RETURN;
+END;
+
+-- Build CREATE DATABASE statement
+SET @SQL = N'CREATE DATABASE ' + QUOTENAME(@SnapshotName) + N' ON ' + CHAR(13) + CHAR(10);
+
+-- Add each data file (ROWS only, no logs)
+SELECT @SQL = @SQL + 
+    N'(NAME = ' + QUOTENAME(name, '''') + 
+    N', FILENAME = ' + QUOTENAME(
+        -- Extract directory path (works on Windows and Linux)
+        LEFT(physical_name, 
+             LEN(physical_name) - CHARINDEX(
+                 CASE WHEN physical_name LIKE '%/%' THEN '/' ELSE '\' END, 
+                 REVERSE(physical_name)
+             )
+        ) + 
+        CASE WHEN physical_name LIKE '%/%' THEN '/' ELSE '\' END +
+        name + '_' + @SnapshotSuffix + '.ss'
+    , '''') + 
+    N'),' + CHAR(13) + CHAR(10)
 FROM sys.master_files
-WHERE database_id = DB_ID(@sourceDb)
-  AND type_desc = 'ROWS';
+WHERE database_id = DB_ID(@SourceDB)
+  AND type = 0  -- ROWS only (data files)
+ORDER BY file_id;
 
-/* Drop temp table if it exists */
-IF OBJECT_ID('tempdb..##DBObjects', 'U') IS NOT NULL
-    DROP TABLE ##DBObjects;
+-- Remove trailing comma and add snapshot clause
+SET @SQL = LEFT(@SQL, LEN(@SQL) - 3) + CHAR(13) + CHAR(10);
+SET @SQL = @SQL + N'AS SNAPSHOT OF ' + QUOTENAME(@SourceDB) + N';';
 
-/* Copy database file metadata to a global temp table */
-SET @SQL = '
-    SELECT *
-    INTO ##DBObjects
-    FROM [' + @sourceDb + '].sys.database_files;
-';
-EXEC sp_executesql @SQL;
-
-/* Build CREATE DATABASE AS SNAPSHOT OF command */
-SET @SQL = 'CREATE DATABASE [' + @SnapshotName + '_dbss] ON ';
-
-SELECT @SQL += 
-    '(NAME = ' + name + ', FILENAME = ''' + @sourcePath + '\' + name + '_ss''),'
-FROM ##DBObjects
-WHERE type_desc = 'ROWS';
-
-/* Remove the trailing comma */
-SET @SQL = LEFT(@SQL, LEN(@SQL) - 1);
-
-/* Append snapshot clause */
-SET @SQL += ' AS SNAPSHOT OF [' + @sourceDb + '];';
-
-/* Uncomment the next line to execute the snapshot creation */
-/* EXEC sp_executesql @SQL; */
-
-/* Print the final SQL command */
+-- Print the command
 PRINT @SQL;
+PRINT '';
+PRINT 'To create the snapshot, uncomment the EXEC line below:';
+PRINT '';
+
+-- Execute (uncomment to actually create the snapshot)
+-- EXEC sp_executesql @SQL;
+
+-- To verify snapshot after creation:
+-- SELECT name, create_date, source_database_id 
+-- FROM sys.databases 
+-- WHERE source_database_id = DB_ID(@SourceDB);
